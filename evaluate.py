@@ -55,8 +55,8 @@ torch.manual_seed(1234)
 
 # set device and default tensor type
 if args.gpuid >= 0:
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpuid)
     torch.cuda.manual_seed_all(1234)
-    torch.cuda.set_device(args.gpuid)
 
 # ----------------------------------------------------------------------------
 # read saved model and args
@@ -70,11 +70,15 @@ model_args.batch_size = args.batch_size
 # this is required by dataloader
 args.img_norm = model_args.img_norm
 
-# set this because only late fusion encoder is supported yet
-args.concat_history = True
+# Concatenate all of history if the LFE is used
+if model_args.encoder.split('-')[0] == 'lf':
+    print('CONCAT!')
+    args.concat_history = True
+else:
+    args.concat_history = False
 
-for arg in vars(args):
-    print('{:<20}: {}'.format(arg, getattr(args, arg)))
+for model_arg in vars(model_args):
+    print('{:<20}: {}'.format(model_arg, getattr(model_args, model_arg)))
 
 # ----------------------------------------------------------------------------
 # loading dataset wrapping with a dataloader
@@ -120,21 +124,23 @@ if args.use_gt:
     # calculate automatic metrics and finish
     # ------------------------------------------------------------------------
     all_ranks = []
-    for i, batch in enumerate(tqdm(dataloader)):
-        for key in batch:
-            if not isinstance(batch[key], list):
-                batch[key] = Variable(batch[key], volatile=True)
-                if args.gpuid >= 0:
-                    batch[key] = batch[key].cuda()
+    with torch.no_grad():
+        for i, batch in enumerate(tqdm(dataloader)):
+            
+            if args.gpuid >= 0:
+                for key in batch:
+                    if not isinstance(batch[key], list):
+                        batch[key] = batch[key].cuda()
 
-        enc_out = encoder(batch)
-        dec_out = decoder(enc_out, batch)
-        ranks = scores_to_ranks(dec_out.data)
-        gt_ranks = get_gt_ranks(ranks, batch['ans_ind'].data)
-        all_ranks.append(gt_ranks)
-    all_ranks = torch.cat(all_ranks, 0)
-    process_ranks(all_ranks)
-    gc.collect()
+            enc_out = encoder(batch)
+            dec_out = decoder(enc_out, batch)
+            ranks = scores_to_ranks(dec_out.data)
+            gt_ranks = get_gt_ranks(ranks, batch['ans_ind'].data)
+            all_ranks.append(gt_ranks)
+            
+        all_ranks = torch.cat(all_ranks, 0)
+        process_ranks(all_ranks)
+        gc.collect()
 else:
     # ------------------------------------------------------------------------
     # prepare json for submission

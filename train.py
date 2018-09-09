@@ -42,7 +42,8 @@ parser.add_argument('-load_path', default='', help='Checkpoint to load path from
 parser.add_argument('-save_path', default='checkpoints/', help='Path to save checkpoints')
 parser.add_argument('-save_step', default=2, type=int,
                         help='Save checkpoint after every save_step epochs')
-
+parser.add_argument('-num_works', default=8, type=int,
+                        help='Number of workers for loading data')
 # ----------------------------------------------------------------------------
 # input arguments and options
 # ----------------------------------------------------------------------------
@@ -52,13 +53,15 @@ start_time = datetime.datetime.strftime(datetime.datetime.utcnow(), '%d-%b-%Y-%H
 if args.save_path == 'checkpoints/':
     args.save_path += start_time
 
+args.device = 'cpu'
 # seed for reproducibility
 torch.manual_seed(1234)
 
 # set device and default tensor type
 if args.gpuid >= 0:
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpuid)
+    args.device = 'cuda'
     torch.cuda.manual_seed_all(1234)
-    torch.cuda.set_device(args.gpuid)
 
 # transfer all options to model
 model_args = args
@@ -90,7 +93,8 @@ dataset = VisDialDataset(args, ['train'])
 dataloader = DataLoader(dataset,
                         batch_size=args.batch_size,
                         shuffle=True,
-                        collate_fn=dataset.collate_fn)
+                        collate_fn=dataset.collate_fn,
+                        num_workers=args.num_workers)
 
 # ----------------------------------------------------------------------------
 # setting model args
@@ -120,14 +124,19 @@ scheduler = lr_scheduler.StepLR(optimizer, step_size=1, gamma=args.lr_decay_rate
 if args.load_path != '':
     encoder.load_state_dict(components['encoder'])
     decoder.load_state_dict(components['decoder'])
+    optimizer.load_state_dict(components['optimizer'])
+    # cuda enabled optimizer, see: 
+    for state in optimizer.state.values():
+        for k, v in state.items():
+            if isinstance(v, torch.Tensor):
+                state[k] = v.to(args.device)
     print("Loaded model from {}".format(args.load_path))
 print("Encoder: {}".format(args.encoder))
 print("Decoder: {}".format(args.decoder))
 
-if args.gpuid >= 0:
-    encoder = encoder.cuda()
-    decoder = decoder.cuda()
-    criterion = criterion.cuda()
+encoder = encoder.to(args.device)
+decoder = decoder.to(args.device)
+criterion = criterion.to(args.device)
 
 # ----------------------------------------------------------------------------
 # training
@@ -148,9 +157,7 @@ for epoch in range(1, model_args.num_epochs + 1):
 
         for key in batch:
             if not isinstance(batch[key], list):
-                batch[key] = Variable(batch[key])
-                if args.gpuid >= 0:
-                    batch[key] = batch[key].cuda()
+                batch[key] = batch[key].to(device)
 
         # --------------------------------------------------------------------
         # forward-backward pass and optimizer step
@@ -167,9 +174,9 @@ for epoch in range(1, model_args.num_epochs + 1):
         # update running loss and decay learning rates
         # --------------------------------------------------------------------
         if running_loss > 0.0:
-            running_loss = 0.95 * running_loss + 0.05 * cur_loss.data[0]
+            running_loss = 0.95 * running_loss + 0.05 * cur_loss.item()
         else:
-            running_loss = cur_loss.data[0]
+            running_loss = cur_loss.item()
 
         if optimizer.param_groups[0]['lr'] > args.min_lr:
             scheduler.step()

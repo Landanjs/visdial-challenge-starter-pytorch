@@ -44,13 +44,14 @@ class LateFusionEncoder(nn.Module):
         self.fusion = nn.Linear(fusion_size, args.rnn_hidden_size)
 
         if args.weight_init == 'xavier':
-            nn.init.xavier_uniform(self.fusion.weight.data)
+            nn.init.xavier_uniform_(self.fusion.weight)
         elif args.weight_init == 'kaiming':
-            nn.init.kaiming_uniform(self.fusion.weight.data)
-        nn.init.constant(self.fusion.bias.data, 0)
+            nn.init.kaiming_uniform_(self.fusion.weight)
+        nn.init.constant_(self.fusion.bias, 0)
 
     def forward(self, batch):
         img = batch['img_feat']
+
         ques = batch['ques']
         hist = batch['hist']
 
