@@ -11,16 +11,16 @@ from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 
 from dataloader import VisDialDataset
-from encoders import Encoder, LateFusionEncoder
+from encoders import EncoderArgs, Encoder
 from decoders import Decoder
 
 
 parser = argparse.ArgumentParser()
 VisDialDataset.add_cmdline_args(parser)
-LateFusionEncoder.add_cmdline_args(parser)
 
 parser.add_argument_group('Encoder Decoder choice arguments')
-parser.add_argument('-encoder', default='lf-ques-im-hist', choices=['lf-ques-im-hist'],
+parser.add_argument('-encoder', default='lf-ques-im-hist',
+                        choices=['lf-ques-im-hist', 'hr-ques-im-hist'],
                         help='Encoder to use for training')
 parser.add_argument('-decoder', default='disc', choices=['disc'],
                         help='Decoder to use for training')
@@ -63,8 +63,11 @@ if args.gpuid >= 0:
     args.device = 'cuda'
     torch.cuda.manual_seed_all(1234)
 
-# transfer all options to model
-model_args = args
+# parse the encoder specific arguments
+EncoderArgs(args.encoder, parser)
+
+# encoder specific arguments with previous arguments
+model_args = parser.parse_args()
 
 # ----------------------------------------------------------------------------
 # read saved model and args
@@ -79,11 +82,14 @@ if args.load_path != '':
     # this is required by dataloader
     args.img_norm = model_args.img_norm
 
-# set this because only late fusion encoder is supported yet
-args.concat_history = True
+# concatenate all of history if the LFE is used
+if args.encoder.split('-')[0] == 'lf':
+    args.concat_history = True
+else:
+    args.concat_history = False
 
-for arg in vars(args):
-    print('{:<20}: {}'.format(arg, getattr(args, arg)))
+for model_arg in vars(model_args):
+    print('{:<20}: {}'.format(model_arg, getattr(model_args, model_arg)))
 
 # ----------------------------------------------------------------------------
 # loading dataset wrapping with a dataloader

@@ -5,6 +5,7 @@ __pycache__/
 .Python
 env/
 build/
+*.pyc
 
 # Datasets and preprocessed files
 data/*.zip
