@@ -42,7 +42,7 @@ parser.add_argument('-load_path', default='', help='Checkpoint to load path from
 parser.add_argument('-save_path', default='checkpoints/', help='Path to save checkpoints')
 parser.add_argument('-save_step', default=2, type=int,
                         help='Save checkpoint after every save_step epochs')
-parser.add_argument('-num_works', default=8, type=int,
+parser.add_argument('-num_workers', default=16, type=int,
                         help='Number of workers for loading data')
 # ----------------------------------------------------------------------------
 # input arguments and options
@@ -163,7 +163,7 @@ for epoch in range(1, model_args.num_epochs + 1):
 
         for key in batch:
             if not isinstance(batch[key], list):
-                batch[key] = batch[key].to(device)
+                batch[key] = batch[key].to(args.device)
 
         # --------------------------------------------------------------------
         # forward-backward pass and optimizer step
